@@ -1,0 +1,97 @@
+x-retailsense-env: &retailsense-env
+  RETAILSENSE_DB_URL: postgresql+psycopg2://retailsense:retailsense@postgres:5432/retailsense
+  RETAILSENSE_S3_ENDPOINT: http://minio:9000
+  RETAILSENSE_S3_BUCKET: retailsense
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: minioadmin
+  AWS_DEFAULT_REGION: us-east-1
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/airflow.Dockerfile
+  environment:
+    <<: *retailsense-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    PYTHONPATH: /opt/airflow
+    RETAILSENSE_DATA_DIR: /opt/airflow/data
+    RETAILSENSE_RAW_PATH: /opt/airflow/data/raw/online_retail_ii.csv
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./retailsense:/opt/airflow/retailsense
+    - ./sql:/opt/airflow/sql
+    - ./data:/opt/airflow/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: retailsense
+      POSTGRES_PASSWORD: retailsense
+      POSTGRES_DB: retailsense
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retailsense"]
+      interval: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - >
+        airflow db migrate &&
+        airflow users create --username admin --password admin --firstname a --lastname b
+        --role Admin --email admin@example.com || true
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  streamlit:
+    build: .
+    environment:
+      <<: *retailsense-env
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  miniodata:

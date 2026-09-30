@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine  # importable on SQLAlchemy 1.4 (Airflow 2.x) and 2.x
 
 from retailsense.config import PROJECT_ROOT, load_config
 

@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # "airflow-compat" pins the same versions as the Airflow 2.9 image (SQLAlchemy 1.4 / pandas 2.1).
+        pins: ["latest", "airflow-compat"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          pip install -r requirements-dev.txt
+          if [ "${{ matrix.pins }}" = "airflow-compat" ]; then
+            pip install "pandas==2.1.4" "numpy==1.26.4" "SQLAlchemy==1.4.52"
+          fi
+      - name: pytest
+        run: python -m pytest --cov=retailsense --cov-fail-under=80
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config -q
+      - name: Build app image
+        run: docker build -t retailsense-app .

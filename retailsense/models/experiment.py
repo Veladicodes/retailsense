@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import Engine
+from sqlalchemy.engine import Engine
 
 from retailsense.features.registry import FEATURE_NAMES
 from retailsense.models.baselines import BASELINES, predict_baseline

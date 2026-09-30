@@ -14,3 +14,4 @@ outputs/
 *.pkl
 *.zip
 *.xlsx
+.venv-compat/

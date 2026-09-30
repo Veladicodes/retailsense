@@ -1,0 +1,7 @@
+xgboost
+lightgbm
+scikit-learn
+boto3
+psycopg2-binary
+openpyxl
+python-dotenv

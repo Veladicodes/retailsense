@@ -4,7 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
-from sqlalchemy import Engine, text
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from retailsense.data.db import read_sql_file
 

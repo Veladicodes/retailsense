@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import pandas as pd
-from sqlalchemy import Engine, text
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 # StockCodes that are fees/adjustments rather than products.
 _NON_PRODUCT = r"^(?:POST|DOT|M|BANK CHARGES|AMAZONFEE|ADJUST\d*|B|S|CRUK|D|TEST\d*|GIFT.*|C2|PADS)$"
