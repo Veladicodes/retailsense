@@ -97,6 +97,34 @@ def test_every_family_fits_and_predicts_finite(feats, family):
     assert np.isfinite(pred).all() and (pred >= 0).all()
 
 
+def test_configs_include_raw_log_and_ratio_targets():
+    from retailsense.models.grid import build_configs
+
+    assert {"raw", "log", "ratio"} <= {c["target"] for c in build_configs()}
+
+
+def test_ratio_target_is_scale_invariant(feats):
+    """Scaling one SKU's demand by 10x must scale its ratio-model predictions ~10x, not leave them unchanged."""
+    from retailsense.features.registry import FEATURE_NAMES
+    from retailsense.models.grid import build_configs, fit_predict
+
+    cfg = next(c for c in build_configs(fast=True) if c["target"] == "ratio" and c["family"] == "ridge") \
+        if any(c["target"] == "ratio" and c["family"] == "ridge" for c in build_configs(fast=True)) \
+        else next(c for c in build_configs(fast=True) if c["target"] == "ratio")
+    tr = feats[feats.split == "train"].dropna(subset=["lag_1"]).copy()
+    te = feats[feats.split == "val"].copy()
+    base = fit_predict(cfg, tr, te, FEATURE_NAMES)
+    # 10x every level-type quantity of one sku (train + predict rows)
+    sku = tr.sku.iloc[0]
+    level_cols = [c for c in FEATURE_NAMES if c.startswith(("lag_", "roll_mean", "roll_min", "roll_max", "roll_std", "ewm", "exp_mean", "exp_max", "exp_std", "seas52"))]
+    for d in (tr, te):
+        m = d.sku == sku
+        d.loc[m, level_cols + ["sales_qty"]] = d.loc[m, level_cols + ["sales_qty"]] * 10
+    scaled = fit_predict(cfg, tr, te, FEATURE_NAMES)
+    m = (te.sku == sku).to_numpy()
+    assert scaled[m].mean() > 5 * base[m].mean()
+
+
 # ---------------------------------------------------------------- experiment protocol
 @pytest.fixture(scope="module")
 def result(feats):
@@ -119,12 +147,23 @@ def test_model_selection_uses_validation_only(feats, result):
     from retailsense.models.experiment import run_experiments
 
     val = result.runs[(result.runs.split == "val") & (result.runs.level == "sku") & (result.runs.family != "baseline")]
-    assert result.summary["best_model"] == val.loc[val.mape.idxmin(), "model"]
+    assert result.summary["best_model"] == val.loc[val.wape.idxmin(), "model"]
+    base = result.runs[(result.runs.split == "val") & (result.runs.level == "sku") & (result.runs.family == "baseline")]
+    assert result.summary["baseline_model"] == base.loc[base.wape.idxmin(), "model"]
     # corrupt the test actuals: the chosen model must not change
     bad = feats.copy()
     bad.loc[bad.split == "test", "sales_qty"] = 123456.0
     r2 = run_experiments(bad, fast=True)
     assert r2.summary["best_model"] == result.summary["best_model"]
+
+
+def test_top3_ensemble_is_evaluated_and_uses_validation_ranking(result):
+    runs = result.runs
+    assert "ensemble_top3" in set(runs.model)
+    params = runs[(runs.model == "ensemble_top3") & (runs.split == "val") & (runs.level == "sku")].params_json.iloc[0]
+    members = json.loads(params)["members"]
+    val = runs[(runs.split == "val") & (runs.level == "sku") & (~runs.family.isin(["baseline", "ensemble"]))]
+    assert members == list(val.sort_values("wape").model.head(3))
 
 
 def test_summary_contains_baseline_and_improvement(result):
