@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+data/raw/
+data/*.db
+data/*.sqlite
+data/processed/
+artifacts/
+outputs/
+.env
+*.pkl
+*.zip
+*.xlsx
