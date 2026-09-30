@@ -24,6 +24,7 @@ class Config:
     top_n_skus: int
     holdout_weeks: int
     validation_weeks: int
+    min_weeks: int = 90
     seed: int = 42
 
 
@@ -37,4 +38,5 @@ def load_config() -> Config:
         top_n_skus=int(os.getenv("RETAILSENSE_TOP_N_SKUS", "100")),
         holdout_weeks=int(os.getenv("RETAILSENSE_HOLDOUT_WEEKS", "13")),
         validation_weeks=int(os.getenv("RETAILSENSE_VALIDATION_WEEKS", "13")),
+        min_weeks=int(os.getenv("RETAILSENSE_MIN_WEEKS", "90")),
     )

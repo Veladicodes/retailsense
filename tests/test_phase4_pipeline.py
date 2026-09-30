@@ -45,7 +45,7 @@ def test_s3_store_roundtrip(aws_env, tmp_path):
     from retailsense.storage.s3 import S3Store
 
     with mock_aws():
-        store = S3Store("b1", endpoint=None)
+        store = S3Store("bucket-one", endpoint=None)
         store.ensure_bucket()
         src = tmp_path / "a.txt"
         src.write_text("hello")
@@ -62,7 +62,7 @@ def test_s3_ensure_bucket_is_idempotent(aws_env):
     from retailsense.storage.s3 import S3Store
 
     with mock_aws():
-        s = S3Store("b2")
+        s = S3Store("bucket-two")
         s.ensure_bucket()
         s.ensure_bucket()
 
