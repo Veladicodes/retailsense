@@ -97,6 +97,14 @@ def test_every_family_fits_and_predicts_finite(feats, family):
     assert np.isfinite(pred).all() and (pred >= 0).all()
 
 
+def test_configs_include_median_objective_variants():
+    from retailsense.models.grid import build_configs
+
+    l1 = [c for c in build_configs() if c["params"].get("objective") in ("l1", "reg:absoluteerror")]
+    assert {c["family"] for c in l1} == {"xgboost", "lightgbm"}
+    assert len(build_configs()) >= 20
+
+
 def test_configs_include_raw_log_and_ratio_targets():
     from retailsense.models.grid import build_configs
 
@@ -195,6 +203,18 @@ def test_runs_are_logged_to_sql(engine, result):
         n = c.execute(text("select count(*) from model_runs where run_id=:r"), {"r": run_id}).scalar()
         nf = c.execute(text("select count(*) from forecasts where run_id=:r"), {"r": run_id}).scalar()
     assert n == len(result.runs) and nf > 0
+
+
+def test_logged_forecasts_identify_their_model(engine, result):
+    import pandas as pd
+    from retailsense.data.db import init_schema
+    from retailsense.models.experiment import log_runs
+
+    init_schema(engine)
+    run_id = log_runs(engine, result)
+    fc = pd.read_sql(f"select * from forecasts where run_id='{run_id}'", engine)
+    assert "model" in fc.columns
+    assert set(fc.model) == {result.summary["best_model"], result.summary["baseline_model"]}
 
 
 def test_report_is_written_with_real_numbers(tmp_path, result):

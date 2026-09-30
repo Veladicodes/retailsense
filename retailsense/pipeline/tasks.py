@@ -124,7 +124,7 @@ def forecast_next_week(cfg: Config, fast: bool = False) -> dict:
     pred = np.mean([fit_predict(by_name[m], hist, target, FEATURE_NAMES) for m in chosen], axis=0)
 
     out = pd.DataFrame({
-        "run_id": run["run_id"], "sku": target["sku"].to_numpy(),
+        "run_id": run["run_id"], "model": run["best_model"], "sku": target["sku"].to_numpy(),
         "week_start": next_week.strftime("%Y-%m-%d"), "split": "future",
         "y_true": float("nan"), "y_pred": pred,
     })

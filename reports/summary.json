@@ -1,0 +1,20 @@
+{
+  "baseline_model": "ewm_03",
+  "best_model": "ensemble_top3",
+  "baseline_mape_sku": 108.0131771236158,
+  "best_mape_sku": 85.33905517274974,
+  "baseline_mape_total": 14.17227382033038,
+  "best_mape_total": 19.817045765170505,
+  "baseline_wape_sku": 52.90113860319738,
+  "best_wape_sku": 48.69566373352445,
+  "worst_baseline_mape_sku": 222.69846349270352,
+  "n_configs": 23,
+  "n_baselines": 4,
+  "n_features": 67,
+  "n_skus": 100,
+  "n_test_weeks": 13,
+  "n_val_weeks": 13,
+  "test_start": "2011-09-05",
+  "test_end": "2011-11-28",
+  "selection_rule": "lowest validation SKU-level WAPE (models and baselines alike); holdout scored once after refit on train+val"
+}

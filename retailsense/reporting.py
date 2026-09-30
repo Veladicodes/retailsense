@@ -9,7 +9,7 @@ def write_report(result, md_path, json_path) -> None:
     s = result.summary
     runs = result.runs
     test_sku = runs[(runs.split == "test") & (runs.level == "sku")].sort_values("mape")
-    val_sku = runs[(runs.split == "val") & (runs.level == "sku")].set_index("model")["mape"]
+    val_sku = runs[(runs.split == "val") & (runs.level == "sku")].set_index("model")["wape"]
     imp_sku = (s["baseline_mape_sku"] - s["best_mape_sku"]) / s["baseline_mape_sku"] * 100
     imp_tot = (s["baseline_mape_total"] - s["best_mape_total"]) / s["baseline_mape_total"] * 100
 
@@ -34,9 +34,9 @@ def write_report(result, md_path, json_path) -> None:
         "",
         f"SKU-level WAPE: baseline {s['baseline_wape_sku']:.1f}% -> model {s['best_wape_sku']:.1f}%.",
         "",
-        "## All configurations (holdout, SKU level; selected on validation MAPE)",
+        "## All configurations (SKU level; the selection metric is validation WAPE)",
         "",
-        "| Model | Family | Validation MAPE | Holdout MAPE | Holdout WAPE |",
+        "| Model | Family | Validation WAPE | Holdout MAPE | Holdout WAPE |",
         "|---|---|---|---|---|",
     ]
     for _, r in test_sku.iterrows():

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS features (
 
 CREATE TABLE IF NOT EXISTS forecasts (
     run_id     TEXT NOT NULL,
+    model      TEXT,
     sku        TEXT NOT NULL,
     week_start TEXT NOT NULL,
     split      TEXT NOT NULL,

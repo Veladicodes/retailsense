@@ -189,6 +189,34 @@ def test_run_all_end_to_end(aws_env, cfg, raw_csv):
         assert res["published"] and res["summary"]["best_model"]
 
 
+# ------------------------------------------------------------------ CLI
+def test_cli_runs_pipeline_and_writes_reports(tmp_path, raw_csv, monkeypatch):
+    from retailsense.pipeline import run_experiments
+
+    monkeypatch.setenv("RETAILSENSE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RETAILSENSE_DB_URL", f"sqlite:///{(tmp_path / 'cli.db').as_posix()}")
+    monkeypatch.setenv("RETAILSENSE_TOP_N_SKUS", "6")
+    monkeypatch.setenv("RETAILSENSE_HOLDOUT_WEEKS", "8")
+    monkeypatch.setenv("RETAILSENSE_VALIDATION_WEEKS", "8")
+    reports = tmp_path / "reports"
+    rc = run_experiments.main(["--raw", str(raw_csv), "--fast", "--reports-dir", str(reports)])
+    assert rc == 0
+    assert (reports / "experiments.md").exists() and (reports / "summary.json").exists()
+
+
+def test_cli_skip_ingest_reuses_existing_database(tmp_path, raw_csv, monkeypatch):
+    from retailsense.pipeline import run_experiments
+
+    monkeypatch.setenv("RETAILSENSE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("RETAILSENSE_DB_URL", f"sqlite:///{(tmp_path / 'cli.db').as_posix()}")
+    monkeypatch.setenv("RETAILSENSE_TOP_N_SKUS", "6")
+    monkeypatch.setenv("RETAILSENSE_HOLDOUT_WEEKS", "8")
+    monkeypatch.setenv("RETAILSENSE_VALIDATION_WEEKS", "8")
+    assert run_experiments.main(["--raw", str(raw_csv), "--fast", "--reports-dir", str(tmp_path / "r1")]) == 0
+    assert run_experiments.main(["--skip-ingest", "--fast", "--reports-dir", str(tmp_path / "r2")]) == 0
+    assert (tmp_path / "r2" / "summary.json").exists()
+
+
 # ------------------------------------------------------------------ Airflow DAG (airflow stubbed: not installable on Windows)
 def _load_dag_with_stub():
     recorded = {"dag": None, "tasks": {}, "edges": []}

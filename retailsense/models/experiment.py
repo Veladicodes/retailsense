@@ -128,5 +128,5 @@ def log_runs(engine: Engine, result: ExperimentResult, run_id: str | None = None
     fc = result.predictions[result.predictions.model.isin(keep)].copy()
     fc["run_id"] = run_id
     fc["week_start"] = pd.to_datetime(fc["week_start"]).dt.strftime("%Y-%m-%d")
-    fc[["run_id", "sku", "week_start", "split", "y_true", "y_pred"]].to_sql("forecasts", engine, if_exists="append", index=False)
+    fc[["run_id", "model", "sku", "week_start", "split", "y_true", "y_pred"]].to_sql("forecasts", engine, if_exists="append", index=False)
     return run_id

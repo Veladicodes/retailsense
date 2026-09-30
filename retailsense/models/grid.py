@@ -8,7 +8,7 @@ from retailsense.config import load_config
 
 
 def build_configs(fast: bool = False) -> list[dict]:
-    """16 model configurations x 3 target transforms (raw / log1p / ratio-to-recent-mean).
+    """22 model configurations over 3 target transforms (raw / log1p / ratio-to-recent-mean) and L2/L1 objectives.
 
     ``fast=True`` shrinks ensembles for unit tests only.
     """
@@ -22,6 +22,12 @@ def build_configs(fast: bool = False) -> list[dict]:
         for leaves in (15, 31):
             cfgs.append(dict(name=f"lgbm_l{leaves}_{target}", family="lightgbm", target=target,
                              params=dict(num_leaves=leaves, learning_rate=0.05, n_estimators=n(400), subsample=0.8, subsample_freq=1, colsample_bytree=0.8, min_child_samples=20)))
+    # Median (L1) objectives: demand is lumpy, so the conditional median is a far better point forecast than the mean.
+    for target in ("raw", "log", "ratio"):
+        cfgs.append(dict(name=f"xgb_d4_{target}_l1", family="xgboost", target=target,
+                         params=dict(max_depth=4, learning_rate=0.05, n_estimators=n(400), subsample=0.8, colsample_bytree=0.8, objective="reg:absoluteerror")))
+        cfgs.append(dict(name=f"lgbm_l15_{target}_l1", family="lightgbm", target=target,
+                         params=dict(num_leaves=15, learning_rate=0.05, n_estimators=n(400), subsample=0.8, subsample_freq=1, colsample_bytree=0.8, min_child_samples=20, objective="l1")))
     for depth in (8, 12):
         cfgs.append(dict(name=f"rf_d{depth}_ratio", family="random_forest", target="ratio",
                          params=dict(n_estimators=n(300), max_depth=depth, min_samples_leaf=3, max_features=0.5)))
