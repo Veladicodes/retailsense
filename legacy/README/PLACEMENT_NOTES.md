@@ -98,7 +98,7 @@ The dashboard will open at `http://localhost:8501`
 
 ## 📁 Dataset
 
-**Primary Data Source:** `F:\RetailSense_Lite\data\processed\data_with_all_features.csv`
+**Primary Data Source:** `.\data\processed\data_with_all_features.csv`
 
 **Required Columns:**
 - `week_start` (date)
@@ -117,7 +117,7 @@ The dashboard will open at `http://localhost:8501`
 - **GradientBoostingRegressor**: Inventory demand prediction
 
 ### Output Files
-All outputs saved to `F:\RetailSense_Lite\outputs\`:
+All outputs saved to `.\outputs\`:
 - `forecasting_results.csv`
 - `business_sales_anomalies.csv`
 - `business_inventory_alerts.csv`

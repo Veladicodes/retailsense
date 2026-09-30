@@ -1,8 +1,9 @@
+import os
 import pandas as pd
 from utils.advanced_forecasting import train_ensemble
 
 # Load your processed dataset
-df = pd.read_csv(r"F:\RetailSense_Lite\data\processed\cleaned_data.csv")
+df = pd.read_csv(os.path.join(os.getenv("RETAILSENSE_BASE_DIR", "."), "data", "processed", "cleaned_data.csv"))
 print("Columns:", df.columns.tolist())
 
 # Select one product for forecasting
@@ -19,7 +20,7 @@ print("Shape of ts:", ts.shape)
 print(ts.head())
 
 # Run the forecast for 90 days (≈ 3 months)
-result = train_ensemble(ts, horizon=90, fast_mode=True, debug=True)
+result = train_ensemble(ts, horizon_weeks=13, fast_mode=True, debug=True)
 
 print("Metrics:", result.metrics)
 print("Details:", result.details)

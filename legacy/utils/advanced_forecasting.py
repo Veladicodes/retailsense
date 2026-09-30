@@ -145,7 +145,7 @@ def _preprocess_weekly_data(df: pd.DataFrame, date_col: str = "week_start", targ
     if zero_mask.sum() > 0:
         # If more than 50% are zeros, use forward fill; otherwise interpolate
         if zero_mask.sum() / len(df) > 0.5:
-            df["sales_qty"] = df["sales_qty"].replace(0, np.nan).fillna(method="ffill").fillna(method="bfill")
+            df["sales_qty"] = df["sales_qty"].replace(0, np.nan).ffill().bfill()
         else:
             # Interpolate isolated zeros
             df["sales_qty"] = df["sales_qty"].replace(0, np.nan)
@@ -297,7 +297,7 @@ def create_features(df: pd.DataFrame, price_col: Optional[str] = None) -> pd.Dat
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     for col in numeric_cols:
         if col != "sales_qty":  # Don't interpolate target variable
-            df[col] = df[col].interpolate(method="time", limit_direction="both").fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+            df[col] = df[col].interpolate(method="time", limit_direction="both").ffill().bfill().fillna(0.0)
     
     # Fill lag features with rolling means if still NaN
     lag_cols = [c for c in df.columns if c.startswith("lag_")]
@@ -592,7 +592,7 @@ def train_ensemble(df: pd.DataFrame, horizon_weeks: int = 156, debug: bool = Fal
         raise ValueError(f"Insufficient clean data for ML: {len(feat_df_clean)} rows. Need ≥10.")
     
     # Fill remaining NaN in features
-    X_all = feat_df_clean[feature_cols].fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+    X_all = feat_df_clean[feature_cols].ffill().bfill().fillna(0.0)
     y_all = feat_df_clean["sales_qty"].values
     
     # Train/validation split (85/15)
@@ -728,7 +728,7 @@ def train_ensemble(df: pd.DataFrame, horizon_weeks: int = 156, debug: bool = Fal
     logger.info(f"Ensemble weights: {weights}")
     
     # Step 5: Generate in-sample predictions for metrics
-    X_all_scaled = scaler.transform(X_all.fillna(method="ffill").fillna(method="bfill").fillna(0.0))
+    X_all_scaled = scaler.transform(X_all.ffill().bfill().fillna(0.0))
     
     in_sample_preds = {}
     
@@ -853,7 +853,7 @@ def train_ensemble(df: pd.DataFrame, horizon_weeks: int = 156, debug: bool = Fal
             try:
                 row = build_future_features(recursive_history, current_date)
                 X_row = pd.DataFrame([row])[feature_cols]
-                X_row = X_row.fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+                X_row = X_row.ffill().bfill().fillna(0.0)
                 X_row_scaled = scaler.transform(X_row.values)
                 
                 if ml_models.get("xgb") is not None:
@@ -1357,162 +1357,6 @@ def _generate_business_insights_enhanced(history: pd.DataFrame, forecast: pd.Dat
     
     return insights
 
-def run_hybrid_forecast(df, product=None, horizon_weeks=12, end_date=None, model_type='hybrid', include_features=True, fast_mode=True):
-    """
-    Run hybrid forecasting model combining Prophet, XGBoost, and LightGBM.
-    
-    Args:
-        df: DataFrame with 'date' and 'sales_qty' columns
-        product: Product name to filter data (optional)
-        horizon_weeks: Number of weeks to forecast
-        end_date: End date for forecasting (optional)
-        model_type: Type of model to use ('hybrid', 'prophet', 'xgboost', 'lightgbm')
-        include_features: Whether to include feature engineering
-        fast_mode: Whether to use faster but less accurate models
-        
-    Returns:
-        EnsembleResult object with forecast and metrics
-    """
-    # Filter data for specific product if provided
-    if product is not None:
-        df = df[df['product_name'] == product].copy()
-    # Preprocess data
-    df_weekly = _preprocess_weekly_data(df)
-    
-    # Create features if requested
-    if include_features:
-        df_weekly = _create_weekly_features(df_weekly)
-    
-    # Split data into train and test
-    train_size = max(int(len(df_weekly) * 0.8), len(df_weekly) - horizon_weeks)
-    df_train = df_weekly.iloc[:train_size].copy()
-    df_test = df_weekly.iloc[train_size:].copy() if train_size < len(df_weekly) else None
-    
-    # Fit Prophet model
-    prophet_hist, prophet_future, prophet_model, prophet_components = _fit_prophet(
-        df_train, horizon_weeks, debug=False
-    )
-    
-    # Prepare feature-based models
-    if include_features:
-        feature_cols = [c for c in df_weekly.columns if c not in ['date', 'sales_qty']]
-        X_train = df_train[feature_cols].values
-        y_train = df_train['sales_qty'].values
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        
-        # Fit models based on model_type
-        xgb_model = None
-        lgb_model = None
-        
-        if model_type.lower() in ['hybrid', 'xgboost']:
-            xgb_model = _fit_xgb(X_train_scaled, y_train, fast_mode=fast_mode)
-            
-        if model_type.lower() in ['hybrid', 'lightgbm']:
-            lgb_model = _fit_lgb(X_train_scaled, y_train, fast_mode=fast_mode)
-        
-        # Generate future features
-        if end_date is not None:
-            # Calculate periods based on end_date
-            start_date = df_weekly['date'].max() + pd.Timedelta(days=7)
-            periods = (end_date - start_date).days // 7 + 1
-            future_dates = pd.date_range(
-                start=start_date,
-                end=end_date,
-                freq='W-SUN'
-            )
-        else:
-            future_dates = pd.date_range(
-                start=df_weekly['date'].max() + pd.Timedelta(days=7),
-                periods=horizon_weeks,
-                freq='W-SUN'
-            )
-        
-        df_future = pd.DataFrame({'date': future_dates})
-        df_future['sales_qty'] = np.nan
-        
-        # Use last values for lag features
-        for lag in [1, 2, 3, 7]:
-            df_future[f'lag_{lag}'] = np.nan
-        
-        # Fill in time-based features
-        df_future['month'] = df_future['date'].dt.month
-        df_future['quarter'] = df_future['date'].dt.quarter
-        df_future['year'] = df_future['date'].dt.year
-        df_future['weekofyear'] = df_future['date'].dt.isocalendar().week
-        
-        # Cyclical encoding
-        df_future['month_sin'] = np.sin(2 * np.pi * df_future['month'] / 12)
-        df_future['month_cos'] = np.cos(2 * np.pi * df_future['month'] / 12)
-        df_future['week_sin'] = np.sin(2 * np.pi * df_future['weekofyear'] / 52)
-        df_future['week_cos'] = np.cos(2 * np.pi * df_future['weekofyear'] / 52)
-        
-        # Rolling statistics
-        for window in [4, 8, 12, 26]:
-            df_future[f'rolling_mean_{window}'] = np.nan
-            df_future[f'rolling_std_{window}'] = np.nan
-    
-    # Combine forecasts
-    if prophet_future is not None:
-        forecast_df = prophet_future.copy()
-        forecast_df = forecast_df.rename(columns={'yhat': 'prophet_forecast'})
-        
-        # Add ensemble forecast (just Prophet for now)
-        forecast_df['forecast'] = forecast_df['prophet_forecast']
-        
-        # Add confidence intervals
-        forecast_df['lower_bound'] = forecast_df['yhat_lower']
-        forecast_df['upper_bound'] = forecast_df['yhat_upper']
-        forecast_df['lower_bound_95'] = forecast_df['yhat_lower_95']
-        forecast_df['upper_bound_95'] = forecast_df['yhat_upper_95']
-    else:
-        # Fallback if Prophet fails
-        forecast_df = pd.DataFrame({
-            'date': pd.date_range(
-                start=df_weekly['date'].max() + pd.Timedelta(days=7),
-                periods=horizon_weeks,
-                freq='W-SUN'
-            )
-        })
-        
-        # Use simple moving average as fallback
-        last_value = df_weekly['sales_qty'].iloc[-1]
-        avg_4w = df_weekly['sales_qty'].iloc[-4:].mean()
-        avg_8w = df_weekly['sales_qty'].iloc[-8:].mean() if len(df_weekly) >= 8 else avg_4w
-        
-        forecast_df['forecast'] = avg_4w
-        forecast_df['lower_bound'] = avg_8w * 0.7
-        forecast_df['upper_bound'] = avg_4w * 1.3
-        forecast_df['lower_bound_95'] = avg_8w * 0.5
-        forecast_df['upper_bound_95'] = avg_4w * 1.5
-    
-    # Calculate metrics
-    metrics = {}
-    if df_test is not None and len(df_test) > 0:
-        y_true = df_test['sales_qty'].values
-        y_pred = forecast_df['forecast'].values[:len(y_true)]
-        
-        metrics['rmse'] = math.sqrt(mean_squared_error(y_true, y_pred))
-        metrics['mae'] = mean_absolute_error(y_true, y_pred)
-        metrics['mape'] = mape(y_true, y_pred)
-        metrics['smape'] = smape(y_true, y_pred)
-        metrics['r2'] = r2_score(y_true, y_pred) if len(y_true) > 1 else 0.0
-    
-    # Create result object
-    result = EnsembleResult(
-        history=df_weekly,
-        forecast=forecast_df,
-        metrics=metrics,
-        residuals=pd.DataFrame(),  # Not implemented for simplicity
-        details={'model_weights': {'prophet': 1.0}},
-        feature_importances=None,
-        prophet_components=prophet_components
-    )
-    
-    return result
-
 def simulate_forecast_scenarios(df, horizon_weeks=12, scenarios=None):
     """
     Generate forecast scenarios based on different assumptions.
@@ -1534,8 +1378,8 @@ def simulate_forecast_scenarios(df, horizon_weeks=12, scenarios=None):
         }
     
     # Get base forecast
-    base_result = run_hybrid_forecast(df, horizon_weeks=horizon_weeks)
-    base_forecast = base_result.forecast_df
+    base_result = run_hybrid_forecast(df, product=df["product_name"].iloc[0], horizon_weeks=horizon_weeks)
+    base_forecast = base_result["forecast_df"]
     
     # Generate scenario forecasts
     scenario_forecasts = {}
@@ -1794,7 +1638,7 @@ def cross_validate_models(df: pd.DataFrame, horizon_weeks: int = 12, n_splits: i
     # Prepare features
     exclude = {"date", "sales_qty"}
     feature_cols = [c for c in df_weekly.columns if c not in exclude]
-    X_all = df_weekly[feature_cols].fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+    X_all = df_weekly[feature_cols].ffill().bfill().fillna(0.0)
     y_all = df_weekly["sales_qty"].values
     
     if len(X_all) < n_splits * horizon_weeks + 20:

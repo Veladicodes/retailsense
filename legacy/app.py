@@ -398,7 +398,7 @@ def preprocess_for_forecasting(ts: pd.DataFrame) -> pd.DataFrame:
     df = df_complete.merge(df, on="date", how="left")
     
     # Forward fill for sales (carry last known value)
-    df["sales_qty"] = df["sales_qty"].fillna(method="ffill").fillna(method="bfill").fillna(0)
+    df["sales_qty"] = df["sales_qty"].ffill().bfill().fillna(0)
     
     # 3. Apply light smoothing to reduce high-frequency noise (7-day moving average)
     df["sales_smooth"] = df["sales_qty"].rolling(window=7, center=True, min_periods=1).mean()
@@ -409,9 +409,9 @@ def preprocess_for_forecasting(ts: pd.DataFrame) -> pd.DataFrame:
     
     # 5. Handle other columns
     if "price" in df.columns:
-        df["price"] = df["price"].fillna(method="ffill").fillna(df["price"].median())
+        df["price"] = df["price"].ffill().fillna(df["price"].median())
     if "stock_on_hand" in df.columns:
-        df["stock_on_hand"] = df["stock_on_hand"].fillna(method="ffill").fillna(0)
+        df["stock_on_hand"] = df["stock_on_hand"].ffill().fillna(0)
     if "promotion_flag" in df.columns:
         df["promotion_flag"] = df["promotion_flag"].fillna(0)
     if "holiday_flag" in df.columns:
@@ -627,7 +627,7 @@ def decompose_series(ts: pd.DataFrame, period: int = 7) -> pd.DataFrame:
 # -------------------------------
 # Directories and Paths
 # -------------------------------
-BASE_DIR         = "F:\\RetailSense_Lite"
+BASE_DIR         = os.getenv("RETAILSENSE_BASE_DIR", os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR          = os.path.join(BASE_DIR, "data", "raw")
 PROCESSED_DIR    = os.path.join(BASE_DIR, "data", "processed")
 OUTPUT_DIR       = os.path.join(BASE_DIR, "outputs")
@@ -1445,7 +1445,7 @@ with tab2:
     C_FILL80 = "rgba(0, 200, 150, 0.35)"   # Teal 80% CI
     C_FILL95 = "rgba(0, 200, 150, 0.15)"   # Teal 95% CI
     C_ANOMALY = "#FF6B6B"         # Red - anomalies
-    OUTPUT_DIR = r"F:\RetailSense_Lite\outputs"
+    OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
     
     # Import functions
     from utils.advanced_forecasting import (
@@ -3998,6 +3998,9 @@ with tab4:
                     avg_weekly_demand = weekly_demand
                     lead_time_weeks = restock_delay / 7.0
                     recommended_reorder = max(0, (avg_weekly_demand * lead_time_weeks) - current_stock)
+                    # Reorder-point inputs used in the recommendation text below
+                    safety_stock_factor = 1.5
+                    lead_time_demand = avg_weekly_demand * lead_time_weeks
                     
                     # Risk level classification
                     if days_to_stockout < restock_delay:
@@ -5278,7 +5281,7 @@ with tab4:
                             
                             styled_df = alerts_df_enhanced[available_cols].sort_values("status" if "status" in available_cols else available_cols[0])
                             st.dataframe(
-                                styled_df.style.applymap(color_status, subset=["status"] if "status" in available_cols else []),
+                                styled_df.style.map(color_status, subset=["status"] if "status" in available_cols else []),
                                 width='stretch',
                                 hide_index=True,
                                 height=400
@@ -5406,7 +5409,7 @@ with tab5:
                             
                             # Aggregate by week
                             weekly_sales = product_df.groupby("week_start")["sales_qty"].sum().resample("W").mean()
-                            weekly_sales = weekly_sales.fillna(method="ffill").fillna(method="bfill")
+                            weekly_sales = weekly_sales.ffill().bfill()
                             
                             if len(weekly_sales) >= 52:
                                 # STL Decomposition

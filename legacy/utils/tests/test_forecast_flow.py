@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from utils.advanced_forecasting import train_ensemble_for_app
 
-DATA_PATH = r"F:\RetailSense_Lite\data\processed\data_with_all_features.csv"
-OUT_PATH = r"F:\RetailSense_Lite\outputs\forecasting_results.csv"
+DATA_PATH = os.path.join(os.getenv("RETAILSENSE_BASE_DIR", "."), "data", "processed", "data_with_all_features.csv")
+OUT_PATH = os.path.join(os.getenv("RETAILSENSE_BASE_DIR", "."), "outputs", "forecasting_results.csv")
 
 def test_flow():
     """Test the forecast flow end-to-end"""

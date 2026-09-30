@@ -62,7 +62,7 @@ class AnomalyDetection:
 
         print("✅ Models trained and anomaly flags added")
 
-    def save_models(self, output_dir=r"F:\RetailSense_Lite\outputs"):
+    def save_models(self, output_dir=os.path.join(os.getenv("RETAILSENSE_BASE_DIR", "."), "outputs")):
         """Save trained anomaly models"""
         os.makedirs(output_dir, exist_ok=True)
         if self.iforest:
@@ -71,7 +71,7 @@ class AnomalyDetection:
             joblib.dump(self.ocsvm, os.path.join(output_dir, "ocsvm_model.pkl"))
         print(f"✅ Models saved to {output_dir}")
 
-    def visualize_dashboard(self, output_dir=r"F:\RetailSense_Lite\outputs"):
+    def visualize_dashboard(self, output_dir=os.path.join(os.getenv("RETAILSENSE_BASE_DIR", "."), "outputs")):
         """Dashboard-style anomaly visualization"""
         print("📈 Generating anomaly dashboard...")
         os.makedirs(output_dir, exist_ok=True)
