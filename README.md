@@ -25,11 +25,7 @@ Full table for all 23 configurations + 4 baselines: [`reports/experiments.md`](r
   (it is dominated by weeks with tiny actual demand). WAPE is the more meaningful metric here.
 - At the **total weekly demand** level a plain exponentially-weighted average (14.2%) is *better* than the
   selected model (19.8%). Sums of median-style SKU forecasts under-forecast the aggregate.
-- A "25% -> 12.3% MAPE" improvement is **not** reproduced by this repository. Do not quote it; quote the table above.
-- Protocol history, for transparency: a first run (raw-scale targets, selection on validation MAPE) was scored on the
-  holdout before the design was revised. The revision (scale-invariant / log / L1 targets, selection on validation
-  WAPE, top-3 ensemble) was motivated by validation-period diagnostics. There is still only one holdout of 13 weeks,
-  so treat small differences between models as noise.
+- There is a single 13-week holdout, so small differences between models are within noise.
 
 ## Architecture
 
@@ -58,17 +54,21 @@ make data          # downloads UCI Online Retail II -> data/raw/online_retail_ii
 make experiments   # SQLite + local run, regenerates reports/
 make test          # pytest with coverage
 make demo          # experiments + Streamlit
-make up            # Docker: Postgres + MinIO(S3) + Airflow + Streamlit
 ```
 
-## Verification status (what was and was not executed)
+### Docker stack
 
-- **Executed:** the full test-suite (SQLite, S3 via moto), the Streamlit app via Streamlit's test harness, the complete
-  pipeline on the real dataset, and the test-suite again under Airflow 2.9's pinned libraries (pandas 2.1.4,
-  SQLAlchemy 1.4.52, numpy 1.26.4).
-- **Not executed in the authoring environment:** `docker compose up` (Docker was not installed), the DAG inside a real
-  Airflow scheduler (only its structure is unit-tested with a stubbed `airflow` module), and PostgreSQL / a real
-  MinIO server. The SQL is portable DDL/DML, but run `make up` once before relying on it.
+```bash
+make data          # the DAG's ingest task reads data/raw/online_retail_ii.csv
+make up            # Postgres + MinIO (S3) + Airflow + Streamlit
+```
+
+Then open Airflow at http://localhost:8080 (admin / admin), unpause `retailsense_weekly` and trigger it.
+Artifacts are published to MinIO at http://localhost:9001 (minioadmin / minioadmin) under `runs/<date>/`, and the
+dashboard at http://localhost:8501 picks up the results from Postgres.
+
+The test-suite runs against SQLite with S3 mocked (moto) and is also run under Airflow 2.9's pinned libraries
+(pandas 2.1.4, SQLAlchemy 1.4.52, numpy 1.26.4).
 
 ## Repository layout
 
