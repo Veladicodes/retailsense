@@ -133,6 +133,34 @@ def test_forecast_next_week_one_row_per_sku(cfg, raw_csv):
     assert (cfg.data_dir / "artifacts" / "next_week_forecast.csv").exists()
 
 
+def test_forecast_supports_ensemble_as_selected_model(cfg, raw_csv):
+    import json
+
+    from retailsense.pipeline import tasks
+
+    tasks.ingest(cfg, raw_csv)
+    tasks.build_features_task(cfg)
+    tasks.train(cfg, fast=True)
+    art = tasks.artifacts_dir(cfg)
+    run = json.loads((art / "run.json").read_text())
+    run.update(best_model="ensemble_top3", members=["ridge_a10_log", "xgb_d4_raw"])
+    (art / "run.json").write_text(json.dumps(run))
+    out = tasks.forecast_next_week(cfg, fast=True)
+    assert out["model"] == "ensemble_top3" and out["n_skus"] == 6
+
+
+def test_run_json_records_ensemble_members(cfg, raw_csv):
+    import json
+
+    from retailsense.pipeline import tasks
+
+    tasks.ingest(cfg, raw_csv)
+    tasks.build_features_task(cfg)
+    tasks.train(cfg, fast=True)
+    run = json.loads((tasks.artifacts_dir(cfg) / "run.json").read_text())
+    assert len(run["members"]) == 3
+
+
 def test_publish_uploads_artifacts_to_s3(aws_env, cfg, raw_csv):
     from moto import mock_aws
     from retailsense.pipeline import tasks

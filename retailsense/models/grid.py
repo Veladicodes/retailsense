@@ -8,27 +8,32 @@ from retailsense.config import load_config
 
 
 def build_configs(fast: bool = False) -> list[dict]:
-    """16 model configurations. ``fast=True`` shrinks ensembles for unit tests only."""
+    """16 model configurations x 3 target transforms (raw / log1p / ratio-to-recent-mean).
+
+    ``fast=True`` shrinks ensembles for unit tests only.
+    """
     n = (lambda full: 30) if fast else (lambda full: full)
     cfgs: list[dict] = []
-    for depth, lr, est in [(4, 0.05, 400), (6, 0.05, 400), (4, 0.10, 200), (6, 0.10, 200)]:
-        cfgs.append(dict(name=f"xgb_d{depth}_lr{int(lr * 100):02d}_n{est}", family="xgboost", log_target=False,
-                         params=dict(max_depth=depth, learning_rate=lr, n_estimators=n(est), subsample=0.8, colsample_bytree=0.8)))
-    for depth in (4, 6):
-        cfgs.append(dict(name=f"xgb_d{depth}_lr05_n400_log", family="xgboost", log_target=True,
-                         params=dict(max_depth=depth, learning_rate=0.05, n_estimators=n(400), subsample=0.8, colsample_bytree=0.8)))
-    for leaves in (15, 31, 63):
-        cfgs.append(dict(name=f"lgbm_l{leaves}", family="lightgbm", log_target=False,
-                         params=dict(num_leaves=leaves, learning_rate=0.05, n_estimators=n(400), subsample=0.8, subsample_freq=1, colsample_bytree=0.8, min_child_samples=20)))
-    for leaves in (15, 31):
-        cfgs.append(dict(name=f"lgbm_l{leaves}_log", family="lightgbm", log_target=True,
-                         params=dict(num_leaves=leaves, learning_rate=0.05, n_estimators=n(400), subsample=0.8, subsample_freq=1, colsample_bytree=0.8, min_child_samples=20)))
+    for target in ("raw", "log", "ratio"):
+        for depth in (4, 6):
+            cfgs.append(dict(name=f"xgb_d{depth}_{target}", family="xgboost", target=target,
+                             params=dict(max_depth=depth, learning_rate=0.05, n_estimators=n(400), subsample=0.8, colsample_bytree=0.8)))
+    for target in ("raw", "log", "ratio"):
+        for leaves in (15, 31):
+            cfgs.append(dict(name=f"lgbm_l{leaves}_{target}", family="lightgbm", target=target,
+                             params=dict(num_leaves=leaves, learning_rate=0.05, n_estimators=n(400), subsample=0.8, subsample_freq=1, colsample_bytree=0.8, min_child_samples=20)))
     for depth in (8, 12):
-        cfgs.append(dict(name=f"rf_d{depth}", family="random_forest", log_target=False,
+        cfgs.append(dict(name=f"rf_d{depth}_ratio", family="random_forest", target="ratio",
                          params=dict(n_estimators=n(300), max_depth=depth, min_samples_leaf=3, max_features=0.5)))
     for alpha in (1.0, 10.0):
-        cfgs.append(dict(name=f"ridge_a{int(alpha)}", family="ridge", log_target=True, params=dict(alpha=alpha)))
+        cfgs.append(dict(name=f"ridge_a{int(alpha)}_log", family="ridge", target="log", params=dict(alpha=alpha)))
     return cfgs
+
+
+def ratio_scale(df: pd.DataFrame) -> np.ndarray:
+    """Recent per-SKU demand level (past information only) used to normalise the ratio target."""
+    s = df["roll_mean_13"].fillna(df["exp_mean"]).fillna(df["lag_1"]).fillna(1.0)
+    return np.maximum(s.to_numpy(dtype=float), 1.0)
 
 
 def _make_model(cfg: dict):
@@ -61,11 +66,16 @@ def _make_model(cfg: dict):
 def fit_predict(cfg: dict, train: pd.DataFrame, target_df: pd.DataFrame, feature_names: list[str]) -> np.ndarray:
     """Fit on ``train`` (rows with target) and predict ``target_df``. Predictions are clipped at 0."""
     y = train["sales_qty"].to_numpy(dtype=float)
-    if cfg["log_target"]:
+    target = cfg["target"]
+    if target == "log":
         y = np.log1p(y)
+    elif target == "ratio":
+        y = y / ratio_scale(train)
     model = _make_model(cfg)
     model.fit(train[feature_names].to_numpy(dtype=float), y)
     pred = model.predict(target_df[feature_names].to_numpy(dtype=float))
-    if cfg["log_target"]:
+    if target == "log":
         pred = np.expm1(pred)
+    elif target == "ratio":
+        pred = pred * ratio_scale(target_df)
     return np.clip(pred, 0, None)

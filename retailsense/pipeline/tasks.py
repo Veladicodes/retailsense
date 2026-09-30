@@ -9,6 +9,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
@@ -91,7 +92,11 @@ def train(cfg: Config, fast: bool = False) -> dict:
     run_id = log_runs(engine, result)
     art = artifacts_dir(cfg)
     write_report(result, art / "experiments.md", art / "summary.json")
-    (art / "run.json").write_text(json.dumps({"run_id": run_id, "best_model": result.summary["best_model"], "fast": fast}), encoding="utf-8")
+    ens = result.runs[(result.runs.model == "ensemble_top3")].params_json.iloc[0]
+    (art / "run.json").write_text(json.dumps({
+        "run_id": run_id, "best_model": result.summary["best_model"], "fast": fast,
+        "members": json.loads(ens)["members"],
+    }), encoding="utf-8")
     best = result.predictions[(result.predictions.model == result.summary["best_model"]) & (result.predictions.split == "test")]
     best.to_csv(art / "test_predictions.csv", index=False)
     return {"run_id": run_id, "summary": result.summary}
@@ -102,7 +107,8 @@ def forecast_next_week(cfg: Config, fast: bool = False) -> dict:
     engine = get_engine(cfg.db_url)
     art = artifacts_dir(cfg)
     run = json.loads((art / "run.json").read_text(encoding="utf-8"))
-    config = next(c for c in build_configs(fast=fast) if c["name"] == run["best_model"])
+    by_name = {c["name"]: c for c in build_configs(fast=fast)}
+    chosen = run["members"] if run["best_model"] == "ensemble_top3" else [run["best_model"]]
 
     panel = weekly_panel(engine, top_n=cfg.top_n_skus, min_weeks=cfg.min_weeks)
     next_week = panel["week_start"].max() + pd.Timedelta(days=7)
@@ -115,7 +121,7 @@ def forecast_next_week(cfg: Config, fast: bool = False) -> dict:
 
     hist = feats[(feats.week_start < next_week) & feats["lag_1"].notna()]
     target = feats[feats.week_start == next_week].copy()
-    pred = fit_predict(config, hist, target, FEATURE_NAMES)
+    pred = np.mean([fit_predict(by_name[m], hist, target, FEATURE_NAMES) for m in chosen], axis=0)
 
     out = pd.DataFrame({
         "run_id": run["run_id"], "sku": target["sku"].to_numpy(),

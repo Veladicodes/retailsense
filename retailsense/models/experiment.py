@@ -1,4 +1,4 @@
-"""Experiment protocol: baselines + 16 configs, selection on validation only, final score on holdout.
+"""Experiment protocol: baselines + 16 configs + top-3 ensemble, selection on validation only, final score on holdout.
 
 1. Every config is fit on ``train`` and scored on ``val``  -> used ONLY to choose the model.
 2. Every config is refit on ``train + val`` and scored on the untouched ``test`` holdout.
@@ -65,16 +65,26 @@ def run_experiments(features: pd.DataFrame, fast: bool = False) -> ExperimentRes
         for split_name, part in (("val", val), ("test", test)):
             register(_pred_frame(part, predict_baseline(name, part), name, split_name), "baseline", {"feature": BASELINES[name]})
 
+    val_preds: dict[str, np.ndarray] = {}
+    test_preds: dict[str, np.ndarray] = {}
     for cfg in configs:
         pv = fit_predict(cfg, train, val, FEATURE_NAMES)
         pt = fit_predict(cfg, trainval, test, FEATURE_NAMES)
+        val_preds[cfg["name"]], test_preds[cfg["name"]] = pv, pt
         register(_pred_frame(val, pv, cfg["name"], "val"), cfg["family"], cfg["params"])
         register(_pred_frame(test, pt, cfg["name"], "test"), cfg["family"], cfg["params"])
 
+    # Top-3 ensemble: members are ranked on VALIDATION SKU-level WAPE only.
+    val_wape = {r["model"]: r["wape"] for r in runs if r["split"] == "val" and r["level"] == "sku" and r["family"] != "baseline"}
+    members = sorted(val_wape, key=val_wape.get)[:3]
+    ens_params = {"members": members}
+    register(_pred_frame(val, np.mean([val_preds[m] for m in members], axis=0), "ensemble_top3", "val"), "ensemble", ens_params)
+    register(_pred_frame(test, np.mean([test_preds[m] for m in members], axis=0), "ensemble_top3", "test"), "ensemble", ens_params)
+
     runs_df = pd.DataFrame(runs)
     val_sku = runs_df[(runs_df.split == "val") & (runs_df.level == "sku")]
-    best_model = val_sku[val_sku.family != "baseline"].set_index("model")["mape"].idxmin()
-    baseline_model = val_sku[val_sku.family == "baseline"].set_index("model")["mape"].idxmin()
+    best_model = val_sku[val_sku.family != "baseline"].set_index("model")["wape"].idxmin()
+    baseline_model = val_sku[val_sku.family == "baseline"].set_index("model")["wape"].idxmin()
 
     def test_metric(model: str, level: str, key: str = "mape") -> float:
         r = runs_df[(runs_df.model == model) & (runs_df.split == "test") & (runs_df.level == level)]
@@ -90,7 +100,7 @@ def run_experiments(features: pd.DataFrame, fast: bool = False) -> ExperimentRes
         "baseline_wape_sku": test_metric(baseline_model, "sku", "wape"),
         "best_wape_sku": test_metric(best_model, "sku", "wape"),
         "worst_baseline_mape_sku": float(max(test_metric(b, "sku") for b in BASELINES)),
-        "n_configs": len(configs),
+        "n_configs": len(configs) + 1,  # fitted configs + the top-3 ensemble
         "n_baselines": len(BASELINES),
         "n_features": len(FEATURE_NAMES),
         "n_skus": int(feats["sku"].nunique()),
@@ -98,7 +108,7 @@ def run_experiments(features: pd.DataFrame, fast: bool = False) -> ExperimentRes
         "n_val_weeks": int(val["week_start"].nunique()),
         "test_start": str(pd.Timestamp(test["week_start"].min()).date()),
         "test_end": str(pd.Timestamp(test["week_start"].max()).date()),
-        "selection_rule": "lowest validation SKU-level MAPE; holdout scored once after refit on train+val",
+        "selection_rule": "lowest validation SKU-level WAPE (models and baselines alike); holdout scored once after refit on train+val",
     }
     return ExperimentResult(runs=runs_df, predictions=pd.concat(preds, ignore_index=True), summary=summary)
 
